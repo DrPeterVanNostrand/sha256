@@ -1,0 +1,9 @@
+[package]
+name = "sha256"
+version = "0.1.0"
+authors = ["Peter van Nostrand <jnz@riseup.net>"]
+
+[dependencies]
+bit-vec = "0.5.0"
+byteorder = "1.2.2"
+
