@@ -4,10 +4,6 @@ extern crate byteorder;
 use bit_vec::BitVec;
 use byteorder::{BigEndian, ByteOrder};
 
-const DIGEST_LENGTH_BITS: usize = 256;
-const DIGEST_LENGTH_BYTES: usize = DIGEST_LENGTH_BITS / 8;
-const DIGEST_LENGTH_WORDS: usize = DIGEST_LENGTH_BYTES / 4;
-
 const BLOCK_LENGTH_BITS: usize = 512;
 const BLOCK_LENGTH_BYTES: usize = BLOCK_LENGTH_BITS / 8;
 
@@ -25,55 +21,31 @@ static K: [u32; 64] = [
 ];
 
 static INIT_HASH_VALUES: [u32; 8] = [
-    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-    0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
+    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
 ];
 
-fn serialize_word_to_bytes(word: u32) -> [u8; 4] {
-    let mut bytes = [0u8; 4];
-    BigEndian::write_u32(&mut bytes, word);
-    bytes
-}
-
-fn deserialize_bytes_to_word(bytes: &[u8]) -> u32 {
-    BigEndian::read_u32(bytes)
-}
-
-fn ch(x: u32, y: u32, z: u32) -> u32 {
+fn choice(x: u32, y: u32, z: u32) -> u32 {
     (x & y) ^ (!x & z)
 }
 
-fn maj(x: u32, y: u32, z: u32) -> u32 {
+fn majority(x: u32, y: u32, z: u32) -> u32 {
     (x & y) ^ (x & z) ^ (y & z)
 }
 
-fn shift_right(x: u32, n: usize) -> u32 {
-    x >> n
+fn sigma_lower_0(x: u32) -> u32 {
+    x.rotate_right(7) ^ x.rotate_right(18) ^ (x >> 3)
 }
 
-// Circular bitwise-rotatation of `n` bit rightwards.
-fn rotate_right(x: u32, n: usize) -> u32 {
-    (x >> n) | (x << (32 - n))
+fn sigma_lower_1(x: u32) -> u32 {
+    x.rotate_right(17) ^ x.rotate_right(19) ^ (x >> 10)    
 }
 
-// Lowercase sigma function #0.
-fn s0(x: u32) -> u32 {
-    rotate_right(x, 7) ^ rotate_right(x, 18) ^ shift_right(x, 3)
+fn sigma_upper_0(x: u32) -> u32 {
+    x.rotate_right(2) ^ x.rotate_right(13) ^ x.rotate_right(22)
 }
 
-// Lowercase sigma function #1.
-fn s1(x: u32) -> u32 {
-    rotate_right(x, 17) ^ rotate_right(x, 19) ^ shift_right(x, 10)
-}
-
-// Uppercase sigma function #0.
-fn s2(x: u32) -> u32 {
-    rotate_right(x, 2) ^ rotate_right(x, 13) ^ rotate_right(x, 22)
-}
-
-// Uppercase sigma function #1.
-fn s3(x: u32) -> u32 {
-    rotate_right(x, 6) ^ rotate_right(x, 11) ^ rotate_right(x, 25)
+fn sigma_upper_1(x: u32) -> u32 {
+    x.rotate_right(6) ^ x.rotate_right(11) ^ x.rotate_right(25)
 }
 
 fn pad_msg(msg_bytes: &[u8]) -> Vec<u8> {
@@ -108,7 +80,7 @@ fn blocks(msg: &[u8]) -> Vec<[u32; 16]> {
 
     for block_bytes in msg.chunks(BLOCK_LENGTH_BYTES) {
         for (i, word_bytes) in block_bytes.chunks(4).enumerate() {
-            block[i] = deserialize_bytes_to_word(word_bytes);
+            block[i] = BigEndian::read_u32(word_bytes);
         }
         blocks.push(block);
     }
@@ -137,9 +109,9 @@ pub fn sha256(msg: &[u8]) -> Vec<u8> {
         }
 
         for i in 16..64 {
-            msg_sched[i] = s1(msg_sched[i - 2])
+            msg_sched[i] = sigma_lower_1(msg_sched[i - 2])
                 .wrapping_add(msg_sched[i - 7])
-                .wrapping_add(s0(msg_sched[i - 15]))
+                .wrapping_add(sigma_lower_0(msg_sched[i - 15]))
                 .wrapping_add(msg_sched[i - 16]);
         }
 
@@ -153,12 +125,14 @@ pub fn sha256(msg: &[u8]) -> Vec<u8> {
         h = digest[7];
 
         for i in 0..64 {
-            let tmp1 = h.wrapping_add(s3(e))
-                .wrapping_add(ch(e, f, g))
+            let tmp1 = h.wrapping_add(sigma_upper_1(e))
+                .wrapping_add(choice(e, f, g))
                 .wrapping_add(K[i])
                 .wrapping_add(msg_sched[i]);
 
-            let tmp2 = s2(a).wrapping_add(maj(a, b, c));
+            let tmp2 = sigma_upper_0(a)
+                .wrapping_add(majority(a, b, c));
+            
             h = g;
             g = f;
             f = e;
@@ -180,8 +154,10 @@ pub fn sha256(msg: &[u8]) -> Vec<u8> {
     }
 
     let mut digest_bytes = vec![];
+    let mut word_bytes = [0u8; 4];
     for word in digest.iter() {
-        for byte in serialize_word_to_bytes(*word).iter() {
+        BigEndian::write_u32(&mut word_bytes, *word);
+        for byte in word_bytes.iter() {
             digest_bytes.push(*byte);
         }
     }
