@@ -6,7 +6,6 @@ use byteorder::{BigEndian, ByteOrder};
 
 const BLOCK_LENGTH_BITS: usize = 512;
 const BLOCK_LENGTH_BYTES: usize = BLOCK_LENGTH_BITS / 8;
-
 const N_FREE_BITS_IN_LAST_BLOCK: usize = 447;
 
 static K: [u32; 64] = [
